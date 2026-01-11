@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Org Chart</title>
+
+  <link rel="stylesheet" href="https://balkan.app/js/OrgChart.css">
+  <script src="https://balkan.app/js/OrgChart.js"></script>
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #f5f6fa;
+      font-family: "Segoe UI", sans-serif;
+      overflow: hidden;
+    }
+
+    #tree {
+      width: 100%;
+      height: 100%;
+      transition: opacity 0.5s ease;
+      opacity: 1;
+    }
+
+    #tree.fade-out {
+      opacity: 0;
+    }
+
+    #compass {
+      position: absolute;
+      top: 50%;
+      right: 20px;
+      transform: translateY(-50%);
+      background: #ffffff;
+      border-radius: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      padding: 12px 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      z-index: 10;
+    }
+
+    .dir-btn {
+      width: 40px;
+      height: 40px;
+      border: none;
+      border-radius: 50%;
+      background: #e0e0e0;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      font-size: 20px;
+    }
+    .dir-btn:hover {
+      background: #007bff;
+      color: #fff;
+      transform: scale(1.1);
+    }
+    .dir-btn.active {
+      background: #007bff;
+      color: #fff;
+      transform: scale(1.15);
+    }
+
+    .center-dot {
+      width: 42px;
+      height: 42px;
+      background: #007bff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 22px;
+    }
+
+    .orgchart-node {
+      border-radius: 10px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      transition: 0.2s;
+    }
+    .orgchart-node:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+    }
+      flt-platform-view {
+    z-index: 0 !important;     /* place iframe behind */
+  }
+  .flt-glass-pane {
+    pointer-events: auto !important; /* allow hover over iframe area */
+  }
+  </style>
+</head>
+<body>
+
+  <!-- Compass buttons -->
+  <div id="compass">
+    <button class="dir-btn active" id="dir-top" title="Top to Bottom">↓</button>
+    <button class="dir-btn" id="dir-bottom" title="Bottom to Top">↑</button>
+    <button class="dir-btn" id="dir-left" title="Left to Right">→</button>
+    <button class="dir-btn" id="dir-right" title="Right to Left">←</button>
+    <div class="center-dot" id="dir-rotate">⟳</div>
+  </div>
+
+  <div id="tree"></div>
+
+  <script>
+    let chart;
+    let currentOrientation = OrgChart.orientation.top;
+
+    function renderChart(data) {
+      if (chart) chart.destroy();
+      chart = new OrgChart(document.getElementById("tree"), {
+        template: "ula",
+        enableSearch: true,
+        orientation: currentOrientation,
+        align: OrgChart.align.orientation,
+        layout: OrgChart.tree,
+        toolbar: { zoom: true, fit: true, expandAll: true, fullScreen: true },
+        nodeBinding: { field_0: "name", field_1: "post" },
+        collapse: {
+          level: 1,  // Collapse all nodes except root
+          allChildren: true
+        }
+      });
+      chart.load(data);
+    }
+
+    // Flutter will call this
+    window.renderOrgChart = function (jsonData) {
+      try {
+        const data = JSON.parse(jsonData);
+        renderChart(data);
+      } catch (e) {
+        console.error("Invalid data passed to renderOrgChart:", e);
+      }
+    };
+
+    // Listen for postMessage from Flutter
+    window.addEventListener('message', function(event) {
+      if (event.data && event.data.type === 'render') {
+        try {
+          const data = JSON.parse(event.data.data);
+          console.log("Received data from Flutter:", data);
+          renderChart(data);
+        } catch (e) {
+          console.error("Error parsing data from Flutter:", e);
+        }
+      }
+    });
+
+    // Default placeholder until Flutter data loads
+    const placeholderData = [
+      { id: 1, name: "Loading...", post: "Please wait" }
+    ];
+    renderChart(placeholderData);
+
+    // Fade + rebuild chart on direction change
+    function setOrientation(dir) {
+      const tree = document.getElementById("tree");
+      tree.classList.add("fade-out");
+      setTimeout(() => {
+        currentOrientation = dir;
+        renderChart(chart.config.nodes);
+        tree.classList.remove("fade-out");
+      }, 300);
+    }
+
+    // Active button highlight
+    function setActiveButton(activeId) {
+      document.querySelectorAll(".dir-btn").forEach(btn => btn.classList.remove("active"));
+      document.getElementById(activeId).classList.add("active");
+    }
+
+    // Button handlers
+    document.getElementById("dir-top").onclick = () => { setActiveButton("dir-top"); setOrientation(OrgChart.orientation.top); };
+    document.getElementById("dir-bottom").onclick = () => { setActiveButton("dir-bottom"); setOrientation(OrgChart.orientation.bottom); };
+    document.getElementById("dir-left").onclick = () => { setActiveButton("dir-left"); setOrientation(OrgChart.orientation.left); };
+    document.getElementById("dir-right").onclick = () => { setActiveButton("dir-right"); setOrientation(OrgChart.orientation.right); };
+
+    // Rotate button
+    const seq = [OrgChart.orientation.top, OrgChart.orientation.right, OrgChart.orientation.bottom, OrgChart.orientation.left];
+    let i = 0;
+    document.getElementById("dir-rotate").onclick = () => {
+      i = (i + 1) % seq.length;
+      const order = ["dir-top", "dir-right", "dir-bottom", "dir-left"];
+      setActiveButton(order[i]);
+      setOrientation(seq[i]);
+    };
+  </script>
+
+</body>
+</html>
