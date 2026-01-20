@@ -147,7 +147,7 @@
       if (event.data && event.data.type === 'render') {
         try {
           const data = JSON.parse(event.data.data);
-          console.log("Received data from Flutter:", data);
+          //console.log("Received data from Flutter:", data);
           renderChart(data);
         } catch (e) {
           console.error("Error parsing data from Flutter:", e);
