@@ -89,6 +89,28 @@
       transform: translateY(-2px);
       box-shadow: 0 4px 10px rgba(0,0,0,0.15);
     }
+
+    /* Always show the "Edit Manager (N+1)" label under its panel button.
+       Balkan renders each edit-form button as
+       <div data-edit-from-btn='editN1' class="boc-img-button" title="…">,
+       and normally the label only appears as a hover tooltip. We surface the
+       title permanently with a CSS ::after, scoped to our button only. */
+    .boc-edit-form-instruments .boc-img-button[data-edit-from-btn='editN1'] {
+      position: relative; /* anchor the ::after label to THIS button */
+      overflow: visible;
+      margin-bottom: 22px; /* reserve room for the label below the 48px button */
+    }
+    .boc-edit-form-instruments .boc-img-button[data-edit-from-btn='editN1']::after {
+      content: attr(title);
+      position: absolute;
+      top: 54px;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      font: 600 12px "Segoe UI", sans-serif;
+      color: #039be5;
+      pointer-events: none;
+    }
       flt-platform-view {
     z-index: 0 !important;     /* place iframe behind */
   }
@@ -124,11 +146,48 @@
         layout: OrgChart.tree,
         toolbar: { zoom: true, fit: true, expandAll: true, fullScreen: true },
         nodeBinding: { field_0: "name", field_1: "post" },
+        // Details side-panel: read-only fields plus a single custom action that
+        // hands the N+1 edit back to the Flutter host (which owns the employee
+        // search + DB update). Default buttons are hidden.
+        editForm: {
+          readOnly: true,
+          buttons: {
+            edit: null,
+            share: null,
+            pdf: null,
+            remove: null,
+            editN1: {
+              icon: OrgChart.icon.edit(24, 24, '#ffffff'),
+              text: "Edit Manager (N+1)",
+              hideIfDetailsMode: false
+            }
+          }
+        },
         collapse: {
           level: 1,  // Collapse all nodes except root
           allChildren: true
         }
       });
+
+      // Custom panel button → ask Flutter to open the N+1 edit dialog.
+      // A JSON string is posted (not a raw object) so the Dart side can safely
+      // distinguish it from the many other messages on window.
+      chart.editUI.on('button-click', function (sender, args) {
+        if (args.name === 'editN1') {
+          var node = chart.get(args.nodeId);
+          if (node) {
+            window.parent.postMessage(JSON.stringify({
+              type: 'editN1',
+              instanceId: window.__cmInstanceId,
+              id: node.id,
+              name: node.name,
+              currentN1: node.pid
+            }), '*');
+          }
+          return false; // suppress default button behaviour
+        }
+      });
+
       chart.load(data);
     }
 
@@ -145,6 +204,9 @@
     // Listen for postMessage from Flutter
     window.addEventListener('message', function(event) {
       if (event.data && event.data.type === 'render') {
+        // Remember which OrgChartWeb instance owns this iframe so editN1 messages
+        // can be routed back only to that instance (the Flutter listener is global).
+        window.__cmInstanceId = event.data.instanceId;
         try {
           const data = JSON.parse(event.data.data);
           //console.log("Received data from Flutter:", data);
